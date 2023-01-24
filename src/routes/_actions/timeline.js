@@ -3,7 +3,7 @@ import { getTimeline } from '../_api/timelines.js'
 import { toast } from '../_components/toast/toast.js'
 import { mark, stop } from '../_utils/marks.js'
 import { concat, mergeArrays } from '../_utils/arrays.js'
-import { compareTimelineItemSummaries } from '../_utils/statusIdSorting.js'
+import { compareTimelineItemSummaries } from '../_utils/statusPopularitySorting.js'
 import { uniqBy, isEqual } from '../_thirdparty/lodash/objects.js'
 import { database } from '../_database/database.js'
 import { getStatus, getStatusContext } from '../_api/statuses.js'
@@ -13,9 +13,12 @@ import { timelineItemToSummary } from '../_utils/timelineItemToSummary.js'
 import { addStatusesOrNotifications } from './addStatusOrNotification.js'
 import { scheduleIdleTask } from '../_utils/scheduleIdleTask.js'
 import { sortItemSummariesForThread } from '../_utils/sortItemSummariesForThread.js'
+import { getFirstIdFromItemSummaries } from '../_utils/getIdFromItemSummaries.js'
 import li from 'li'
 
-const byId = _ => _.id
+// TODO: this was modified to filter by reblog id if one exists. This should
+// remove the duplicate-boosts from the timeline. Requires testing.
+const byId = _ => ( _.reblog ? _.reblog.id : _.id )
 
 async function storeFreshTimelineItemsInDatabase (instanceName, timelineName, items) {
   await database.insertTimelineItems(instanceName, timelineName, items)
@@ -159,11 +162,26 @@ async function addTimelineItems (instanceName, timelineName, items, stale) {
 }
 
 export async function addTimelineItemSummaries (instanceName, timelineName, newSummaries, newStale) {
-  const oldSummaries = store.getForTimeline(instanceName, timelineName, 'timelineItemSummaries')
+  const oldSummaries = store.getForTimeline(instanceName, timelineName, 'timelineItemSummaries') || []
   const oldStale = store.getForTimeline(instanceName, timelineName, 'timelineItemSummariesAreStale')
 
-  const mergedSummaries = uniqBy(mergeArrays(oldSummaries || [], newSummaries, compareTimelineItemSummaries), byId)
-
+  // This used to both de-duplicate and (incorrectly, I think) merge arrays by
+  // sorting.
+  // First, the both arrays already were sorted, and second, they're not
+  // supposed to be mixed. It only appeared to work because the time-ordered
+  // arrays wouldn't overlap. 
+  // Changing the sorting introduced potentially interleaved results, which 
+  // makes no sense given user is scrolling up or down, not expecting the new
+  // items to interleave.
+  const oldFirstItem = oldSummaries.length > 0 ? getFirstIdFromItemSummaries(oldSummaries) : undefined
+  const newFirstItem = newSummaries.length > 0 ? getFirstIdFromItemSummaries(newSummaries) : undefined
+  const mergedSummaries = (oldFirstItem > newFirstItem) ?
+    // if old items are newer than new items, add the new items to the end
+    uniqBy(concat(oldSummaries,newSummaries), byId) :
+    // if old items are older than new items, add the new items to the start
+    uniqBy(concat(newSummaries,oldSummaries), byId)
+  console.log("addTimelineItemSummaries: %d new items added at position %d, summary length now %d", mergedSummaries.length - oldSummaries.length, mergedSummaries.findIndex( _ => _.id === newFirstItem), mergedSummaries.length)
+  
   if (!isEqual(oldSummaries, mergedSummaries)) {
     store.setForTimeline(instanceName, timelineName, { timelineItemSummaries: mergedSummaries })
   }
@@ -225,6 +243,11 @@ export async function fetchMoreItemsAtBottomOfTimeline (instanceName, timelineNa
 export async function showMoreItemsForTimeline (instanceName, timelineName) {
   mark('showMoreItemsForTimeline')
   let itemSummariesToAdd = store.getForTimeline(instanceName, timelineName, 'timelineItemSummariesToAdd') || []
+  // this is the final sorting just before adding buffered items to the
+  // visible timeline. In order to sort by popularity, we needed to first
+  // add more metadata into the summary item (causing extra memory pressure)
+  // so that those fields would be available in the sorting algorithm.
+  // The actual content is hydrated into the timeline element after this sort.
   itemSummariesToAdd = itemSummariesToAdd.sort(compareTimelineItemSummaries).reverse()
   addTimelineItemSummaries(instanceName, timelineName, itemSummariesToAdd, false)
   store.setForTimeline(instanceName, timelineName, {

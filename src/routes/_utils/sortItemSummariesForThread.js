@@ -28,6 +28,9 @@ export function sortItemSummariesForThread (summaries, statusId) {
 
   // find descendants
   // This mirrors the depth-first ordering used in the Postgres query in the Mastodon implementation
+  // TODO: reply threads can't follow the same reverse-sorted logic as the
+  // home timeline, because while that might be desirable for the first load,
+  // inserting new items mid-chain is not helpful
   const stack = [status]
   while (stack.length) {
     const current = stack.shift()

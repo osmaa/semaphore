@@ -2,13 +2,18 @@ import { mark, stop } from '../_utils/marks.js'
 import { store } from '../_store/store.js'
 import { uniqBy, isEqual } from '../_thirdparty/lodash/objects.js'
 import { database } from '../_database/database.js'
-import { concat } from '../_utils/arrays.js'
+import { concat, mergeArrays } from '../_utils/arrays.js'
 import { scheduleIdleTask } from '../_utils/scheduleIdleTask.js'
 import { timelineItemToSummary } from '../_utils/timelineItemToSummary.js'
+import { compareTimelineItemSummaries } from '../_utils/statusPopularitySorting.js'
+
+// TODO: this was modified to filter by reblog id if one exists. This should
+// remove the duplicate-boosts from the timeline. Requires testing.
+const byId = _ => ( _.reblog ? _.reblog.id : _.id )
 
 function getExistingItemIdsSet (instanceName, timelineName) {
   const timelineItemSummaries = store.getForTimeline(instanceName, timelineName, 'timelineItemSummaries') || []
-  return new Set(timelineItemSummaries.map(_ => _.id))
+  return new Set(timelineItemSummaries.map(byId))
 }
 
 function removeDuplicates (instanceName, timelineName, updates) {
@@ -29,12 +34,12 @@ async function insertUpdatesIntoTimeline (instanceName, timelineName, updates) {
   const itemSummariesToAdd = store.getForTimeline(instanceName, timelineName, 'timelineItemSummariesToAdd') || []
   console.log('itemSummariesToAdd', JSON.parse(JSON.stringify(itemSummariesToAdd)))
   console.log('updates.map(timelineItemToSummary)', JSON.parse(JSON.stringify(updates.map(timelineItemToSummary))))
-  console.log('concat(itemSummariesToAdd, updates.map(timelineItemToSummary))',
+  // here we're adding as-of-yet-invisible items to the timeline, so
+  // it makes sense to merge them in, instead of concatenating
+  console.log('mergeArrays(itemSummariesToAdd, updates.map(timelineItemToSummary))',
     JSON.parse(JSON.stringify(concat(itemSummariesToAdd, updates.map(item => timelineItemToSummary(item, instanceName))))))
   const newItemSummariesToAdd = uniqBy(
-    concat(itemSummariesToAdd, updates.map(item => timelineItemToSummary(item, instanceName))),
-    _ => _.id
-  )
+    mergeArrays(itemSummariesToAdd, updates.map(item => timelineItemToSummary(item, instanceName)),compareTimelineItemSummaries), byId)
   if (!isEqual(itemSummariesToAdd, newItemSummariesToAdd)) {
     console.log('adding ', (newItemSummariesToAdd.length - itemSummariesToAdd.length),
       'items to timelineItemSummariesToAdd for timeline', timelineName)
@@ -77,9 +82,7 @@ async function insertUpdatesIntoThreads (instanceName, updates) {
       continue
     }
     const newItemSummariesToAdd = uniqBy(
-      concat(itemSummariesToAdd, validUpdates.map(item => timelineItemToSummary(item, instanceName))),
-      _ => _.id
-    )
+      concat(itemSummariesToAdd, validUpdates.map(item => timelineItemToSummary(item, instanceName))), byId )
     if (!isEqual(itemSummariesToAdd, newItemSummariesToAdd)) {
       console.log('adding ', (newItemSummariesToAdd.length - itemSummariesToAdd.length),
         'items to timelineItemSummariesToAdd for thread', timelineName)
