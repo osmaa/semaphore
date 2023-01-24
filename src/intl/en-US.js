@@ -9,6 +9,9 @@ export default {
       designed for speed and simplicity.
     </p>
     <p>
+      This version is a modified, experimental build which may or may not contain features that follow the Mastodon community, but strike the author's fancy. Use at your own risk, and blame [this fork's owner](https://mas.to/@osma) if you must.
+    </p>
+    <p>
       Get started by logging in to an instance:
     </p>`,
   logIn: 'Log in',

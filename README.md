@@ -4,6 +4,8 @@
 
 Accessible, simple and fast web client for [Mastodon](https://joinmastodon.org).
 
+This is a modified, experimental build of Semaphore which may or may not contain features that follow the Mastodon community, but strike the author's fancy. Use at your own risk, and blame [this fork's owner](https://mas.to/@osma) if you must. Hosted at [Fishpool](https://semaphore.fishpool.org).
+
 Semaphore is available at [semaphore.social](https://semaphore.social). Beta releases are at [beta.semaphore.social](https://beta.semaphore.social).
 
 For updates and support, follow [@semaphore@fosstodon.org](https://fosstodon.org/@semaphore).
